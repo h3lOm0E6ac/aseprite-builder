@@ -1,0 +1,63 @@
+name: Build Aseprite Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Aseprite (Windows x64)
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout Aseprite Source
+        uses: actions/checkout@v4
+        with:
+          repository: aseprite/aseprite
+          submodules: recursive
+          ref: v1.3.18.6  # Latest stable tag checked from official repo
+
+      - name: Install Ninja
+        uses: aseprite/get-ninja@main
+
+      - name: Setup MSVC Compiler
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+
+      - name: Download Skia Prebuilt Binary
+        shell: bash
+        run: |
+          curl -L -o Skia-Windows-Release-x64.zip https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-Windows-Release-x64.zip
+          unzip Skia-Windows-Release-x64.zip -d skia
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_TESTS=OFF \
+            -DENABLE_UI=ON \
+            -DENABLE_SCRIPTING=ON \
+            -DLAF_BACKEND=skia \
+            -DSKIA_DIR=$(pwd)/skia \
+            -DSKIA_LIBRARY_DIR=$(pwd)/skia/out/Release-x64
+
+      - name: Compile Aseprite
+        shell: bash
+        run: |
+          cmake --build build --config Release
+
+      - name: Clean Unneeded Build Files
+        shell: bash
+        working-directory: build/bin
+        run: |
+          # Keep executable and data files only
+          find . -mindepth 1 ! \( -name 'aseprite' -o -name 'aseprite.exe' -o -name 'data' -prune \) -exec rm -rf {} +
+
+      - name: Make Portable Config
+        shell: bash
+        run: echo '# This file is here so Aseprite behaves as a portable program' > build/bin/aseprite.ini
+
+      - name: Upload Private Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aseprite-Windows-v1.3.18.6
+          path: build/bin/
